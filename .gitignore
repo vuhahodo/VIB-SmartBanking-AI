@@ -1,0 +1,39 @@
+# Ignore data files (too large for GitHub, >900MB total)
+Track 1 Datarathon/*.csv
+Track 1 Datarathon/*.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Env
+.env
+venv/
+.venv/
+
+# Temp scripts
+inspect_dict.py
+profile_data.py
