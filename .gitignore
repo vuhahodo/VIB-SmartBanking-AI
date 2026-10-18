@@ -12,6 +12,8 @@ build/
 *.egg
 *.pkl
 *.joblib
+!ai/models/*.joblib
+ai/kaggle_output/
 *.h5
 *.pt
 *.pth

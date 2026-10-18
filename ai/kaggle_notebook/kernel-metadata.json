@@ -1,0 +1,15 @@
+{
+  "id": "dophucvuha/vib-smartbanking-ai-training",
+  "title": "VIB SmartBanking AI Training",
+  "code_file": "train_model.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": false,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": [
+    "dophucvuha/vib-smartbanking-data"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

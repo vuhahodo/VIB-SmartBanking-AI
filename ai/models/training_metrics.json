@@ -1,0 +1,163 @@
+{
+  "created_at": "2026-10-18T17:15:35.506844",
+  "num_customers": 290223,
+  "results": {
+    "target_creditcard": {
+      "roc_auc": 0.9891,
+      "precision": 0.864,
+      "recall": 0.9207,
+      "f1": 0.8915,
+      "positives_test": 8475,
+      "total_test": 58045
+    },
+    "target_term_deposit": {
+      "roc_auc": 0.9716,
+      "precision": 0.6662,
+      "recall": 0.8961,
+      "f1": 0.7642,
+      "positives_test": 9131,
+      "total_test": 58045
+    },
+    "target_loan": {
+      "roc_auc": 0.9711,
+      "precision": 0.8718,
+      "recall": 0.9152,
+      "f1": 0.893,
+      "positives_test": 20403,
+      "total_test": 58045
+    }
+  },
+  "top_drivers": {
+    "target_creditcard": [
+      {
+        "feature": "has_loan",
+        "importance": 0.7147
+      },
+      {
+        "feature": "max_loan_count",
+        "importance": 0.0559
+      },
+      {
+        "feature": "channel_auto_job",
+        "importance": 0.0493
+      },
+      {
+        "feature": "num_lending_months",
+        "importance": 0.0301
+      },
+      {
+        "feature": "avg_loan_amount_mean",
+        "importance": 0.0219
+      },
+      {
+        "feature": "has_ebank",
+        "importance": 0.0217
+      },
+      {
+        "feature": "max_ca_accounts",
+        "importance": 0.0088
+      },
+      {
+        "feature": "channel_branch",
+        "importance": 0.0087
+      },
+      {
+        "feature": "avg_loan_amount_max",
+        "importance": 0.0087
+      },
+      {
+        "feature": "amount_credit_card_repayment",
+        "importance": 0.0073
+      }
+    ],
+    "target_term_deposit": [
+      {
+        "feature": "avg_ca_balance_min",
+        "importance": 0.1724
+      },
+      {
+        "feature": "num_deposit_months",
+        "importance": 0.1305
+      },
+      {
+        "feature": "max_debitcards",
+        "importance": 0.0722
+      },
+      {
+        "feature": "is_female",
+        "importance": 0.0576
+      },
+      {
+        "feature": "avg_loan_amount_max",
+        "importance": 0.052
+      },
+      {
+        "feature": "has_debitcard",
+        "importance": 0.0491
+      },
+      {
+        "feature": "avg_loan_amount_mean",
+        "importance": 0.0462
+      },
+      {
+        "feature": "max_loan_count",
+        "importance": 0.0388
+      },
+      {
+        "feature": "avg_ca_balance_max",
+        "importance": 0.0336
+      },
+      {
+        "feature": "num_card_months",
+        "importance": 0.0327
+      }
+    ],
+    "target_loan": [
+      {
+        "feature": "has_creditcard",
+        "importance": 0.1817
+      },
+      {
+        "feature": "max_debitcards",
+        "importance": 0.1701
+      },
+      {
+        "feature": "has_debitcard",
+        "importance": 0.1421
+      },
+      {
+        "feature": "max_creditcards",
+        "importance": 0.0936
+      },
+      {
+        "feature": "max_td_accounts",
+        "importance": 0.0632
+      },
+      {
+        "feature": "avg_td_balance_mean",
+        "importance": 0.0469
+      },
+      {
+        "feature": "has_term_deposit",
+        "importance": 0.0394
+      },
+      {
+        "feature": "avg_ca_balance_last",
+        "importance": 0.0321
+      },
+      {
+        "feature": "avg_ca_balance_mean",
+        "importance": 0.0209
+      },
+      {
+        "feature": "num_card_months",
+        "importance": 0.016
+      }
+    ]
+  },
+  "features_count": {
+    "target_creditcard": 74,
+    "target_term_deposit": 73,
+    "target_loan": 70
+  }
+}
