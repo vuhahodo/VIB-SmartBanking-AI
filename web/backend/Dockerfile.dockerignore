@@ -1,0 +1,8 @@
+# Chỉ gửi những gì Dockerfile cần (tránh gửi ~900MB CSV và node_modules)
+*
+!ai/predict.py
+!ai/models/
+!web/backend/requirements.txt
+!web/backend/app/
+!web/backend/seed.py
+**/__pycache__

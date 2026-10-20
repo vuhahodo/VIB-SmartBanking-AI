@@ -258,7 +258,7 @@ input:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px va
 .login-form h2 { font-size: 1.5rem; }
 .login-form > p { margin: 6px 0 24px; }
 .demo-hint { margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--border); font-size: 0.85rem; color: var(--muted); }
-.demo-ids { display: flex; gap: 8px; margin-top: 8px; }
+.demo-ids { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .chip {
   padding: 6px 12px;
   border-radius: 99px;

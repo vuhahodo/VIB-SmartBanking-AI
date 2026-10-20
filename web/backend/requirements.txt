@@ -1,0 +1,16 @@
+fastapi==0.151.0
+uvicorn[standard]==0.54.0
+SQLAlchemy==2.1.5
+psycopg[binary]==3.3.6
+pydantic-settings==2.16.0
+email-validator==2.3.0
+PyJWT==2.15.1
+bcrypt==5.0.0
+
+# AI inference (ai/predict.py)
+# bản CPU-only: bỏ ~345MB thư viện CUDA không dùng tới (import vẫn là `xgboost`)
+xgboost-cpu==3.4.1
+scikit-learn==1.9.1
+joblib==1.6.0
+pandas==3.0.6
+numpy==2.5.4

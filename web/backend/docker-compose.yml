@@ -1,0 +1,37 @@
+# Chạy local:
+#   docker compose up -d db           # chỉ PostgreSQL (dev backend bằng venv)
+#   docker compose up -d --build      # PostgreSQL + backend trong container
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vib
+      POSTGRES_PASSWORD: vib
+      POSTGRES_DB: vib_smartbanking
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vib -d vib_smartbanking"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: web/backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://vib:vib@db:5432/vib_smartbanking
+      JWT_SECRET: dev-only-secret-change-me-in-production-0123456789
+      DEMO_MODE: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:

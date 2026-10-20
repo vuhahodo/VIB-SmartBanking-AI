@@ -17,9 +17,16 @@ async function http(path, options = {}) {
       ...options.headers,
     },
   })
+  if (res.status === 401 && token) {
+    // Token hết hạn / không hợp lệ -> về trang đăng nhập
+    localStorage.removeItem('vib_token')
+    localStorage.removeItem('vib_customer')
+    window.location.assign('/login')
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail || `Lỗi ${res.status}`)
+    const detail = Array.isArray(body.detail) ? 'Dữ liệu không hợp lệ, vui lòng kiểm tra lại' : body.detail
+    throw new Error(detail || `Lỗi ${res.status}`)
   }
   return res.json()
 }
@@ -39,6 +46,12 @@ export const api = {
     await delay()
     if (!mock.customers[customerNumber] || !password) throw new Error('Mã khách hàng hoặc mật khẩu không đúng')
     return { access_token: `mock-${customerNumber}`, customer_number: customerNumber }
+  },
+
+  // GET /api/auth/demo-accounts -> [{ customer_number, full_name }]
+  async getDemoAccounts() {
+    if (!USE_MOCK) return http('/auth/demo-accounts')
+    return mock.DEMO_CUSTOMER_IDS.map((id) => ({ customer_number: id, full_name: mock.customers[id].profile.full_name }))
   },
 
   // GET /api/customers/{id} -> { profile, accounts }
@@ -94,4 +107,4 @@ export const api = {
 }
 
 export const isMock = USE_MOCK
-export const demoCustomerIds = mock.DEMO_CUSTOMER_IDS
+export const DEMO_PASSWORD = '123456'

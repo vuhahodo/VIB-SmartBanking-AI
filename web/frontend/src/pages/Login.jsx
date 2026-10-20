@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Lock, ShieldCheck, Sparkles, User } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { demoCustomerIds, isMock } from '../api/client'
+import { api, DEMO_PASSWORD } from '../api/client'
+import { useAsync } from '../utils/useAsync'
 import Logo from '../components/Logo'
 
 export default function Login() {
@@ -11,6 +12,8 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // Backend tắt DEMO_MODE thì endpoint trả 404 -> không hiện gợi ý
+  const demo = useAsync(() => api.getDemoAccounts(), [])
 
   if (customerId) return <Navigate to="/" replace />
 
@@ -72,13 +75,22 @@ export default function Login() {
             {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </button>
 
-          {isMock && (
+          {demo.data?.length > 0 && (
             <div className="demo-hint">
-              Tài khoản demo (mật khẩu bất kỳ):
+              Tài khoản demo (mật khẩu {DEMO_PASSWORD}):
               <div className="demo-ids">
-                {demoCustomerIds.map((d) => (
-                  <button type="button" key={d} className="chip" onClick={() => { setId(d); setPassword('demo') }}>
-                    {d}
+                {demo.data.map((d) => (
+                  <button
+                    type="button"
+                    key={d.customer_number}
+                    className="chip"
+                    title={d.full_name}
+                    onClick={() => {
+                      setId(d.customer_number)
+                      setPassword(DEMO_PASSWORD)
+                    }}
+                  >
+                    {d.customer_number}
                   </button>
                 ))}
               </div>

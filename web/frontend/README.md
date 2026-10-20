@@ -8,15 +8,15 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Mặc định dùng **dữ liệu giả** (`src/mock/data.js`), đăng nhập bằng mã `00992830` hoặc `01234567`, mật khẩu bất kỳ.
+Mặc định dùng **dữ liệu giả** (`src/mock/data.js`), không cần backend — bấm mã khách hàng demo ở màn hình đăng nhập.
 
-Khi backend FastAPI chạy ở cổng 8000, tạo file `.env.local`:
+**Dùng backend thật** (xem [web/backend/README.md](../backend/README.md)): tạo file `.env.local`:
 
 ```
 VITE_USE_MOCK=false
 ```
 
-Vite sẽ proxy `/api/*` sang `http://localhost:8000`.
+Vite sẽ proxy `/api/*` sang `http://localhost:8000`. Tài khoản demo hiện ở màn hình đăng nhập, mật khẩu `123456`.
 
 ## Màn hình
 
