@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>VIB SmartBanking Demo</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f6f9; padding: 30px; }
+        .box { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin-top: 10px; width: 100%; box-sizing: border-box; }
+        button { background: #004b87; color: white; border: none; font-weight: bold; cursor: pointer; }
+        .result { margin-top: 15px; padding: 10px; background: #e8f4fd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>VIB SmartBanking AI</h2>
+        <label>Nhập mã CIF:</label>
+        <input type="text" id="cif" value="00992830" />
+        <button onclick="lookup()">Xem Gợi Ý Sản Phẩm</button>
+        <div id="out" class="result" style="display:none;"></div>
+    </div>
+    <script>
+        async function lookup() {
+            const id = document.getElementById('cif').value;
+            const res = await fetch(`/api/v1/recommendation/${id}`);
+            const data = await res.json();
+            const out = document.getElementById('out');
+            out.style.display = 'block';
+            out.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+    </script>
+</body>
+</html>
