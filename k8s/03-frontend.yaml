@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: frontend-ui
   namespace: vib-banking
-  labels:
-    app: frontend-ui
 spec:
   replicas: 2
   selector:
@@ -16,28 +14,27 @@ spec:
         app: frontend-ui
     spec:
       containers:
-        - name: frontend-ui
-          image: vib-frontend:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 80
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "300m"
-              memory: "256Mi"
+      - name: frontend
+        image: vib-frontend:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: frontend-svc
+  name: frontend-service
   namespace: vib-banking
 spec:
-  type: ClusterIP
-  ports:
-    - port: 80
-      targetPort: 80
   selector:
     app: frontend-ui
+  ports:
+  - port: 80
+    targetPort: 80
