@@ -12,15 +12,20 @@ Chạy:  python seed.py            # thêm khách chưa có
 
 import argparse
 import json
+import logging
 import random
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy import select, text
 
 from app.auth import hash_password
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import Account, Customer, CustomerFeature, Transaction
 
+logger = logging.getLogger("vib.seed")
 DEMO_PASSWORD = "123456"
 
 NAMES = {
@@ -45,12 +50,25 @@ FILL = {
 }
 
 
+def wait_for_db(max_retries: int = 15, delay: float = 2.0) -> None:
+    """Chờ PostgreSQL sẵn sàng trước khi thao tác schema/data."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return
+        except Exception as exc:
+            if attempt == max_retries:
+                logger.error("Không thể kết nối cơ sở dữ liệu sau %d lần thử: %s", max_retries, exc)
+                raise
+            time.sleep(delay)
+
+
 def make_transactions(rng: random.Random, features: dict) -> list[dict]:
     """Sinh giao dịch giả lập theo tần suất & giá trị trung bình trong đặc trưng."""
     now = datetime.now(timezone.utc)
     n = min(int(features.get("total_transactions") or 0), 40)
     avg = float(features.get("avg_trans_amount") or 0) or 500_000
-    # Giới hạn để số liệu hiển thị hợp lý trên UI
     avg = min(max(avg, 200_000), 20_000_000)
 
     txs = []
@@ -61,7 +79,6 @@ def make_transactions(rng: random.Random, features: dict) -> list[dict]:
         when = now - timedelta(days=rng.randint(0, 60), hours=rng.randint(0, 23), minutes=rng.randint(0, 59))
         txs.append({"date": when, "description": desc, "category": category, "amount": amount})
 
-    # Khách ít dùng MyVIB vẫn có vài giao dịch tại quầy để UI không trống
     if n == 0:
         for d in (3, 17, 34):
             txs.append({
@@ -89,12 +106,17 @@ def make_accounts(rng: random.Random, cust_no: str, f: dict) -> list[Account]:
     return accounts
 
 
-def main(reset: bool) -> None:
+def main(reset: bool = False) -> int:
+    wait_for_db()
     if reset:
         Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
 
     samples_path = settings.AI_DIR / "models" / "sample_customers.json"
+    if not samples_path.exists():
+        print(f"Cảnh báo: Không tìm thấy file {samples_path}, bỏ qua seed.")
+        return 0
+
     samples = json.loads(samples_path.read_text(encoding="utf-8"))
     password_hash = hash_password(DEMO_PASSWORD)
     used = {"F": 0, "M": 0}
@@ -105,7 +127,7 @@ def main(reset: bool) -> None:
             cust_no = str(raw["CUSTOMER_NUMBER"])
             if db.get(Customer, cust_no):
                 continue
-            # Bỏ mã KH và nhãn target_* (nhãn huấn luyện, không phải đầu vào model)
+
             features = {k: v for k, v in raw.items() if k != "CUSTOMER_NUMBER" and not k.startswith("target_")}
             rng = random.Random(cust_no)
             g = "F" if raw.get("is_female") else "M"
@@ -127,13 +149,31 @@ def main(reset: bool) -> None:
             db.add(customer)
             db.add_all(Transaction(customer_number=cust_no, **t) for t in make_transactions(rng, features))
             added += 1
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
     print(f"Seed xong: thêm {added} khách hàng (mật khẩu demo: {DEMO_PASSWORD}).")
+    return added
+
+
+def seed_if_empty() -> int:
+    """Tự động kiểm tra và nạp 5 khách hàng demo nếu cơ sở dữ liệu còn trống."""
+    wait_for_db()
+    Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        existing = db.execute(select(Customer.customer_number).limit(1)).scalar_one_or_none()
+        if existing:
+            return 0
+    print("Database chưa có dữ liệu demo, tự động nạp...")
+    return main(reset=False)
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")  # console Windows mặc định cp1252
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", action="store_true", help="Xóa và tạo lại toàn bộ bảng")
     main(parser.parse_args().reset)

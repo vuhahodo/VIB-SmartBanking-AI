@@ -1,0 +1,49 @@
+# Manifest chay load test truc tiep ben trong Cluster
+# Lenh chay: kubectl apply -f k8s/06-load-generator.yaml
+# Xem log:  kubectl logs -f job/vib-load-generator -n vib-banking
+# Xoa job:  kubectl delete job vib-load-generator -n vib-banking
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vib-load-generator
+  namespace: vib-banking
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: vib-load-generator
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: load-generator
+        image: curlimages/curl:8.5.0
+        command:
+        - sh
+        - -c
+        - |
+          echo "Bắt đầu đăng nhập lấy JWT token..."
+          TOKEN=$(curl -s -X POST http://backend-service:8000/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"customer_number": "00992830", "password": "123456"}' | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+
+          if [ -z "$TOKEN" ]; then
+            echo "Lỗi: Không lấy được token đăng nhập!"
+            exit 1
+          fi
+
+          echo "Đăng nhập thành công! Bắt đầu tạo tải 90 giây liên tục..."
+          END_TIME=$((SECONDS + 90))
+          COUNT=0
+
+          # Chạy song song 15 luồng tải bằng subshell
+          while [ $SECONDS -lt $END_TIME ]; do
+            for i in $(seq 1 15); do
+              curl -s -o /dev/null -H "Authorization: Bearer $TOKEN" http://backend-service:8000/api/recommendations/00992830 &
+              COUNT=$((COUNT + 1))
+            done
+            sleep 0.1
+          done
+          wait
+          echo "Đã gửi $COUNT requests. Hoàn thành kiểm thử tải!"
+

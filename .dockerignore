@@ -1,0 +1,33 @@
+# Exclude heavy files and media from docker build context
+.git/
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Datasets and large raw data
+Track 1 Datarathon/
+*.csv
+*.zip
+*.tar.gz
+
+# Media, previews and documents
+*.mp4
+*.webm
+*.webp
+*.png
+*.jpg
+*.jpeg
+*.docx
+*.pdf
+_temp_*
+demo_screenshots/
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+

@@ -1,0 +1,67 @@
+# Sao lưu PostgreSQL định kỳ bằng CronJob (pg_dump) vào một ổ đĩa riêng, giữ 7 ngày.
+# Chạy thử ngay:  kubectl create job --from=cronjob/pg-backup pg-backup-manual -n vib-banking
+# Xem kết quả:    kubectl logs job/pg-backup-manual -n vib-banking
+# Khôi phục:      xem k8s/RUNBOOK.md, mục "Mất hoặc hỏng dữ liệu".
+# Hạn chế: bản sao lưu nằm trong cùng cụm; production nên đẩy ra object storage (S3, GCS).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pg-backups
+  namespace: vib-banking
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  namespace: vib-banking
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: pg-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: pg-backup
+            image: postgres:15-alpine
+            imagePullPolicy: IfNotPresent
+            envFrom:
+            - secretRef:
+                name: vib-secrets
+            command:
+            - sh
+            - -c
+            - |
+              set -e
+              FILE=/backup/vib_db_$(date +%Y%m%d_%H%M%S).sql.gz
+              PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h postgres-svc -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/dump.sql
+              gzip -c /tmp/dump.sql > "$FILE"
+              echo "Da tao $FILE"
+              find /backup -name 'vib_db_*.sql.gz' -mtime +7 -delete
+              ls -lh /backup
+            volumeMounts:
+            - name: backup
+              mountPath: /backup
+            resources:
+              requests:
+                cpu: "50m"
+                memory: "64Mi"
+              limits:
+                cpu: "250m"
+                memory: "256Mi"
+          volumes:
+          - name: backup
+            persistentVolumeClaim:
+              claimName: pg-backups

@@ -16,8 +16,20 @@ logger = logging.getLogger("vib")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(engine)
-    # Nạp 3 model XGBoost đúng 1 lần, dùng chung cho mọi request
+    # Khởi tạo bảng nếu chưa có
+    try:
+        Base.metadata.create_all(engine)
+    except Exception as exc:
+        logger.warning("Không thể tạo schema database lúc khởi động: %s", exc)
+
+    # Tự động nạp dữ liệu 5 khách hàng demo nếu database còn trống
+    try:
+        from seed import seed_if_empty
+        seed_if_empty()
+    except Exception as exc:
+        logger.info("Bỏ qua hoặc không thể auto-seed: %s", exc)
+
+    # Nạp 3 model XGBoost đúng 1 lần vào RAM, dùng chung cho mọi request
     app.state.engine = load_engine()
     logger.info("AI engine loaded: %s", list(app.state.engine.models))
     yield
@@ -38,12 +50,14 @@ for r in (auth, customers, recommendations, products, applications, ai):
 
 
 @app.get("/health", tags=["health"])
+@app.get("/api/health", tags=["health"])
 def health():
     """Liveness probe cho Kubernetes: process còn sống."""
     return {"status": "ok"}
 
 
 @app.get("/ready", tags=["health"])
+@app.get("/api/ready", tags=["health"])
 def ready(request: Request):
     """Readiness probe: DB kết nối được và model AI đã nạp."""
     try:

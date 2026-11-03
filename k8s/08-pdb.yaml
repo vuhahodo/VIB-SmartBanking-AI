@@ -1,0 +1,23 @@
+# PodDisruptionBudget: khi bảo trì có chủ đích (ví dụ kubectl drain một node) luôn giữ lại ít nhất 1 pod phục vụ.
+# Không ảnh hưởng tới việc pod crash hay bị xoá trực tiếp (đã có ReplicaSet lo).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-pdb
+  namespace: vib-banking
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: backend-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: vib-banking
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend-ui

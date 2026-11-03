@@ -1,0 +1,28 @@
+# NetworkPolicy: chỉ cho phép backend-api, Job nạp dữ liệu và Job sao lưu kết nối tới PostgreSQL (cổng 5432).
+# Pod khác trong cụm (kể cả frontend) không vào được cơ sở dữ liệu.
+# Chính sách chỉ áp dụng cho pod postgres, các pod khác không bị ảnh hưởng nên không làm hỏng Ingress.
+# Lưu ý: K3s mặc định có bộ điều khiển NetworkPolicy. Kiểm tra bằng: python scripts/verify_cloud.py
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-backend-only
+  namespace: vib-banking
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - backend-api
+          - vib-db-seed
+          - pg-backup
+    ports:
+    - protocol: TCP
+      port: 5432
