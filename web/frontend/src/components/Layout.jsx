@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { BrainCircuit, CreditCard, LayoutDashboard, LogOut, Menu, ReceiptText, X } from 'lucide-react'
+import { BrainCircuit, CreditCard, LayoutDashboard, LogOut, Menu, ReceiptText, Server, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { api, isMock } from '../api/client'
 import { useAsync } from '../utils/useAsync'
@@ -11,15 +11,17 @@ const NAV = [
   { to: '/products', label: 'Sản phẩm', icon: CreditCard },
   { to: '/transactions', label: 'Giao dịch', icon: ReceiptText },
   { to: '/ai-insights', label: 'AI Insights', icon: BrainCircuit },
+  { to: '/admin/infrastructure', label: 'Hạ tầng Cloud', icon: Server, badge: 'DevOps' },
 ]
 
 export default function Layout() {
   const { customerId, logout } = useAuth()
   const [open, setOpen] = useState(false)
   const { data } = useAsync(() => api.getCustomer(customerId), [customerId])
-  const name = data?.profile.full_name ?? '...'
+  const name = data?.profile?.full_name ?? '...'
   const initials = name
     .split(' ')
+    .filter(Boolean)
     .slice(-2)
     .map((w) => w[0])
     .join('')
@@ -34,10 +36,24 @@ export default function Layout() {
           </button>
         </div>
         <nav>
-          {NAV.map(({ to, label, icon: Icon, end }) => (
+          {NAV.map(({ to, label, icon: Icon, end, badge }) => (
             <NavLink key={to} to={to} end={end} className="nav-link" onClick={() => setOpen(false)}>
               <Icon size={18} />
-              {label}
+              <span style={{ flex: 1 }}>{label}</span>
+              {badge && (
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                    color: '#fff',
+                  }}
+                >
+                  {badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

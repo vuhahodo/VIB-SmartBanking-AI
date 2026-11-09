@@ -72,16 +72,21 @@ class CustomerFeature(Base):
 
 
 class Application(Base):
-    """Hồ sơ đăng ký sản phẩm khách gửi từ web."""
+    """Hồ sơ đăng ký sản phẩm khách gửi từ web (hỗ trợ lưu vết xử lý sự cố)."""
 
     __tablename__ = "applications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    application_code: Mapped[str] = mapped_column(String(20), unique=True)
+    application_code: Mapped[str] = mapped_column(String(32), unique=True)
     customer_number: Mapped[str] = mapped_column(ForeignKey("customers.customer_number", ondelete="CASCADE"), index=True)
     product_code: Mapped[str] = mapped_column(String(30))
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="SUBMITTED")
+    ai_score: Mapped[float | None] = mapped_column(nullable=True)
+    assigned_limit: Mapped[float | None] = mapped_column(nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    mode: Mapped[str] = mapped_column(String(30), default="ONLINE")
     payload: Mapped[dict] = mapped_column(JsonType)
-    status: Mapped[str] = mapped_column(String(20), default="PENDING")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

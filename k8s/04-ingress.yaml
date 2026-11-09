@@ -4,11 +4,100 @@ metadata:
   name: vib-ingress
   namespace: vib-banking
   annotations:
+    # Hỗ trợ cả HTTP và HTTPS
     ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Bảo mật: Giới hạn tần suất request (Rate Limiting chống DoS / DDoS / Brute-force)
+    nginx.ingress.kubernetes.io/limit-rps: "25"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    - smartbanking.vib.vn
+    - vib.local
+    secretName: vib-tls-secret
   rules:
+  # 1. Tên miền chính thức của Ngân hàng VIB
+  - host: smartbanking.vib.vn
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /docs
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /openapi.json
+        pathType: Exact
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /ready
+        pathType: Exact
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  # 2. Tên miền nội bộ cục bộ
+  - host: vib.local
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /ready
+        pathType: Exact
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+  # 3. Mặc định truy cập qua IP Node (Catch-all IP access)
   - http:
       paths:
       - path: /api

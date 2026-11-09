@@ -1,0 +1,417 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-override
+  namespace: vib-banking
+data:
+  schemas.py: |
+    from datetime import datetime
+    from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+    # ---------- Auth ----------
+    class LoginIn(BaseModel):
+        customer_number: str
+        password: str
+
+    class TokenOut(BaseModel):
+        access_token: str
+        token_type: str = "bearer"
+        customer_number: str
+
+    class DemoAccount(BaseModel):
+        customer_number: str
+        full_name: str
+
+    # ---------- Customer ----------
+    class ProfileOut(BaseModel):
+        customer_number: str
+        full_name: str
+        segment: str
+        age: int
+        tenure_days: int
+        email: str
+        phone: str
+
+    class AccountOut(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+        id: int
+        type: str
+        number: str
+        balance: float | None
+
+    class CustomerOut(BaseModel):
+        profile: ProfileOut
+        accounts: list[AccountOut]
+
+    class TransactionOut(BaseModel):
+        model_config = ConfigDict(from_attributes=True)
+        id: int
+        date: datetime
+        description: str
+        category: str
+        amount: float
+
+    # ---------- Products ----------
+    class ProductOut(BaseModel):
+        target_key: str
+        product_code: str
+        product_name: str
+        category: str
+        badge: str
+        description: str
+        threshold: float
+        highlights: list[str]
+
+    # ---------- Recommendations ----------
+    class RecommendationItem(BaseModel):
+        target_key: str
+        product_code: str
+        product_name: str
+        category: str
+        badge: str
+        description: str
+        score: float
+        percent: float
+        recommended: bool
+        reasons: list[str]
+
+    class TopProduct(BaseModel):
+        code: str
+        name: str
+        score: float
+        percent: float
+
+    class PredictionOut(BaseModel):
+        customer_number: str
+        top_product: TopProduct
+        summary_explanation: str
+        recommendations: list[RecommendationItem]
+
+    # ---------- Applications ----------
+    class ApplicationIn(BaseModel):
+        model_config = ConfigDict(extra="ignore")
+        product_code: str
+        full_name: str = Field(min_length=2, max_length=120)
+        phone: str = Field(min_length=8, max_length=20)
+        email: EmailStr
+        amount: float | None = Field(default=None, ge=0)
+        term_months: int | None = Field(default=None, ge=1, le=120)
+        monthly_income: float | None = Field(default=None, ge=0)
+        idempotency_key: str | None = Field(default=None, max_length=64)
+
+    class ApplicationOut(BaseModel):
+        application_id: str
+        status: str
+        product_code: str
+        created_at: datetime
+        ai_score: float | None = None
+        decision_reason: str | None = None
+        assigned_limit: float | None = None
+        is_duplicate: bool = False
+        mode: str = "ONLINE"
+
+  auth.py: |
+    from fastapi import APIRouter, Depends
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+    from ..auth import create_access_token
+    from ..database import get_db
+    from ..schemas import DemoAccount, LoginIn, TokenOut
+
+    router = APIRouter(prefix="/auth", tags=["auth"])
+
+    @router.post("/login", response_model=TokenOut)
+    def login(body: LoginIn):
+        cust_no = body.customer_number.strip()
+        return TokenOut(access_token=create_access_token(cust_no), customer_number=cust_no)
+
+    @router.get("/demo-accounts", response_model=list[DemoAccount])
+    def demo_accounts(db: Session = Depends(get_db)):
+        rows = db.execute(text("SELECT customer_number FROM customer_features LIMIT 10")).fetchall()
+        return [DemoAccount(customer_number=r[0], full_name=f"Khách hàng {r[0]}") for r in rows]
+
+  recommendations.py: |
+    import json
+    from fastapi import APIRouter, Depends, HTTPException, status
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+    from ..ai_engine import VIBRecommendationEngine, get_engine
+    from ..auth import ensure_self, get_current_customer
+    from ..database import get_db
+    from ..schemas import PredictionOut
+
+    router = APIRouter(prefix="/recommendations", tags=["recommendations"])
+
+    @router.get("/{customer_number}", response_model=PredictionOut)
+    def recommend(
+        customer_number: str,
+        db: Session = Depends(get_db),
+        current: str = Depends(get_current_customer),
+        engine: VIBRecommendationEngine = Depends(get_engine),
+    ):
+        ensure_self(customer_number, current)
+        query = text("SELECT features FROM customer_features WHERE customer_number = :c")
+        row = db.execute(query, {"c": customer_number}).fetchone()
+        if not row or not row[0]:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy dữ liệu khách hàng")
+
+        features_dict = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        features_dict["CUSTOMER_NUMBER"] = customer_number
+        return engine.predict_single(features_dict)
+
+  applications.py: |
+    import json
+    import logging
+    import secrets
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+    from sqlalchemy import select, text
+    from sqlalchemy.orm import Session
+
+    from ..ai_engine import PRODUCTS_BY_CODE, VIBRecommendationEngine, get_engine
+    from ..auth import get_current_customer
+    from ..database import SessionLocal, get_db
+    from ..models import Application
+    from ..schemas import ApplicationIn, ApplicationOut
+
+    router = APIRouter(prefix="/applications", tags=["applications"])
+    logger = logging.getLogger("vib.applications")
+
+    OUTBOX_DIR = Path("/tmp/vib_outbox")
+    OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
+
+    def flush_local_outbox():
+        synced = []
+        errors = []
+        files = list(OUTBOX_DIR.glob("*.json"))
+        if not files:
+            return synced, errors
+        try:
+            with SessionLocal() as db:
+                for filepath in files:
+                    try:
+                        data = json.loads(filepath.read_text(encoding="utf-8"))
+                        app_code = data["application_code"]
+                        exists = db.scalar(select(Application).where(Application.application_code == app_code))
+                        if not exists:
+                            app = Application(
+                                application_code=app_code,
+                                customer_number=data["customer_number"],
+                                product_code=data["product_code"],
+                                status="SUBMITTED",
+                                payload={
+                                    **data.get("payload", {}),
+                                    "synced_from_outbox": True,
+                                    "synced_at": datetime.now(timezone.utc).isoformat(),
+                                },
+                            )
+                            db.add(app)
+                            db.commit()
+                        filepath.unlink(missing_ok=True)
+                        synced.append(app_code)
+                        logger.info("Outbox worker: đã nạp thành công đơn %s vào PostgreSQL", app_code)
+                    except Exception as e:
+                        db.rollback()
+                        errors.append({"file": filepath.name, "error": str(e)})
+        except Exception as conn_err:
+            logger.debug("Outbox worker: DB chưa sẵn sàng (%s)", conn_err)
+        return synced, errors
+
+    def _start_background_syncer():
+        import threading
+        import time
+        def _loop():
+            while True:
+                time.sleep(2)
+                try:
+                    flush_local_outbox()
+                except Exception:
+                    pass
+        t = threading.Thread(target=_loop, daemon=True)
+        t.start()
+
+    _start_background_syncer()
+
+    def to_out(a: Application, is_duplicate: bool = False) -> ApplicationOut:
+        payload = a.payload if isinstance(a.payload, dict) else {}
+        return ApplicationOut(
+            application_id=a.application_code,
+            status=a.status,
+            product_code=a.product_code,
+            created_at=a.created_at,
+            ai_score=payload.get("ai_score"),
+            decision_reason=payload.get("decision_reason"),
+            assigned_limit=payload.get("assigned_limit"),
+            is_duplicate=is_duplicate,
+            mode=payload.get("mode", "ONLINE"),
+        )
+
+    def calculate_credit_limit(product_code: str, monthly_income: float | None, requested_amount: float | None, prob: float) -> float:
+        income = float(monthly_income or 15_000_000)
+        if product_code == "CREDIT_CARD":
+            multiplier = 3.0 if prob >= 0.7 else 2.0
+            return min(round(income * multiplier, -6), 150_000_000)
+        elif product_code == "CONSUMER_LOAN":
+            max_possible = income * 5.0
+            req = float(requested_amount or 50_000_000)
+            return min(req, max_possible, 100_000_000)
+        elif product_code == "TERM_DEPOSIT":
+            return float(requested_amount or 20_000_000)
+        return 10_000_000.0
+
+    @router.post("", response_model=ApplicationOut, status_code=status.HTTP_201_CREATED)
+    def submit_application(
+        body: ApplicationIn,
+        response: Response,
+        x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+        simulate_failure: str | None = Query(None, description="Mô phỏng sự cố: 'ai_error' hoặc 'db_error'"),
+        db: Session = Depends(get_db),
+        current: str = Depends(get_current_customer),
+        engine: VIBRecommendationEngine = Depends(get_engine),
+    ):
+        if body.product_code not in PRODUCTS_BY_CODE:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Sản phẩm không tồn tại")
+
+        idem_key = x_idempotency_key or getattr(body, "idempotency_key", None)
+
+        if idem_key:
+            recent_apps = db.scalars(
+                select(Application)
+                .where(Application.customer_number == current)
+                .order_by(Application.created_at.desc())
+                .limit(20)
+            ).all()
+            for app_item in recent_apps:
+                p = app_item.payload if isinstance(app_item.payload, dict) else {}
+                if p.get("idempotency_key") == idem_key:
+                    logger.info("Phát hiện request trùng lặp (Idempotency Key=%s). Trả kết quả cũ.", idem_key)
+                    response.status_code = status.HTTP_200_OK
+                    return to_out(app_item, is_duplicate=True)
+
+        ai_score = None
+        assigned_limit = None
+        decision_reason = ""
+        status_val = "SUBMITTED"
+        mode_val = "ONLINE"
+
+        target_mapping = {
+            "CREDIT_CARD": "target_creditcard",
+            "CONSUMER_LOAN": "target_loan",
+            "TERM_DEPOSIT": "target_term_deposit",
+        }
+        target_key = target_mapping.get(body.product_code)
+
+        try:
+            if simulate_failure == "ai_error":
+                raise RuntimeError("SIMULATED_AI_TIMEOUT: Dịch vụ suy luận mô hình XGBoost bị quá tải / timeout.")
+
+            row = db.execute(text("SELECT features FROM customer_features WHERE customer_number = :c"), {"c": current}).fetchone()
+            features = {}
+            if row and row[0]:
+                features = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            features["CUSTOMER_NUMBER"] = current
+
+            prediction = engine.predict_single(features)
+            rec_item = next((r for r in prediction["recommendations"] if r["target_key"] == target_key), None)
+            if rec_item:
+                ai_score = float(rec_item["score"])
+            else:
+                ai_score = float(prediction["top_product"]["score"])
+
+            if ai_score >= 0.5:
+                status_val = "PRE_APPROVED"
+                assigned_limit = calculate_credit_limit(body.product_code, body.monthly_income, body.amount, ai_score)
+                decision_reason = f"AI phê duyệt tức thì: Điểm tín nhiệm cao ({ai_score*100:.1f}%), đủ điều kiện cấp hạn mức tự động."
+            else:
+                status_val = "PENDING_REVIEW"
+                decision_reason = f"Điểm tín nhiệm sơ bộ ({ai_score*100:.1f}%), hồ sơ được chuyển sang chuyên viên VIB liên hệ thẩm định chi tiết."
+            mode_val = "ONLINE"
+
+        except Exception as ai_exc:
+            logger.warning("AI Engine gặp sự cố (%s). Kích hoạt Circuit Breaker & Rule-based Fallback.", ai_exc)
+            mode_val = "FALLBACK_RULE_BASED"
+            ai_score = None
+            income = float(body.monthly_income or 0)
+
+            if income >= 15_000_000:
+                status_val = "PRE_APPROVED"
+                assigned_limit = min(income * 2.0, 100_000_000)
+                decision_reason = f"⚡ Áp dụng cơ chế dự phòng (Rule-based Fallback khi AI gián đoạn): Phê duyệt sơ bộ dựa trên thu nhập ({income:,.0f} VND)."
+            else:
+                status_val = "PENDING_REVIEW"
+                assigned_limit = None
+                decision_reason = "⚡ Áp dụng cơ chế dự phòng: Hồ sơ được tiếp nhận và chuyển tiếp an toàn sang kênh thẩm định thủ công."
+
+        payload_data = {
+            **body.model_dump(mode="json", exclude={"product_code"}),
+            "idempotency_key": idem_key,
+            "ai_score": ai_score,
+            "assigned_limit": assigned_limit,
+            "decision_reason": decision_reason,
+            "mode": mode_val,
+        }
+        app_code = f"APP-{secrets.token_hex(3).upper()}"
+
+        try:
+            if simulate_failure == "db_error":
+                raise RuntimeError("SIMULATED_DATABASE_FAILURE: Mất kết nối tới cụm PostgreSQL StatefulSet.")
+
+            app = Application(
+                application_code=app_code,
+                customer_number=current,
+                product_code=body.product_code,
+                status=status_val,
+                payload=payload_data,
+            )
+            db.add(app)
+            db.commit()
+            db.refresh(app)
+            return to_out(app, is_duplicate=False)
+
+        except Exception as db_exc:
+            db.rollback()
+            offline_code = f"APP-OFFLINE-{secrets.token_hex(3).upper()}"
+            outbox_payload = {
+                "application_code": offline_code,
+                "customer_number": current,
+                "product_code": body.product_code,
+                "status": "QUEUED_OFFLINE",
+                "payload": payload_data,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            buffer_file = OUTBOX_DIR / f"{offline_code}.json"
+            buffer_file.write_text(json.dumps(outbox_payload, ensure_ascii=False), encoding="utf-8")
+            logger.error("Database không phản hồi (%s). Đã lưu đơn an toàn vào Outbox: %s", db_exc, buffer_file)
+
+            response.status_code = status.HTTP_202_ACCEPTED
+            fake_app = Application(
+                application_code=offline_code,
+                customer_number=current,
+                product_code=body.product_code,
+                status="QUEUED_OFFLINE",
+                payload={
+                    **payload_data,
+                    "mode": "FALLBACK_OUTBOX",
+                    "decision_reason": "⚡ Áp dụng cơ chế dự phòng Outbox (Cơ sở dữ liệu đang bảo trì/failover): Đơn đăng ký đã lưu vào bộ đệm an toàn và sẽ tự động đồng bộ khi DB online.",
+                },
+                created_at=datetime.now(timezone.utc),
+            )
+            return to_out(fake_app, is_duplicate=False)
+
+    @router.get("", response_model=list[ApplicationOut])
+    def my_applications(db: Session = Depends(get_db), current: str = Depends(get_current_customer)):
+        rows = db.scalars(
+            select(Application).where(Application.customer_number == current).order_by(Application.created_at.desc())
+        ).all()
+        return [to_out(a) for a in rows]
+
+    @router.post("/sync-outbox")
+    def sync_outbox():
+        synced, errors = flush_local_outbox()
+        return {
+            "message": f"Đã đồng bộ {len(synced)} hồ sơ vào cơ sở dữ liệu.",
+            "synced": synced,
+            "errors": errors,
+        }

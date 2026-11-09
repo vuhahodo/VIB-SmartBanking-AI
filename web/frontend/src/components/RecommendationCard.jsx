@@ -17,7 +17,7 @@ export default function RecommendationCard({ rec, rank }) {
       </div>
       <p className="muted">{rec.description}</p>
       <ul className="reasons">
-        {rec.reasons.slice(0, 2).map((r) => (
+        {(rec.reasons || []).slice(0, 2).map((r) => (
           <li key={r}>
             <Check size={15} />
             <span>{r}</span>

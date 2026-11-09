@@ -9,7 +9,7 @@ from sqlalchemy import text
 from .ai_engine import load_engine
 from .config import settings
 from .database import Base, engine
-from .routers import ai, applications, auth, customers, products, recommendations
+from .routers import ai, applications, auth, customers, ops, products, recommendations
 
 logger = logging.getLogger("vib")
 
@@ -19,6 +19,16 @@ async def lifespan(app: FastAPI):
     # Khởi tạo bảng nếu chưa có
     try:
         Base.metadata.create_all(engine)
+        with engine.begin() as conn:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text("""
+                    ALTER TABLE applications ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64);
+                    ALTER TABLE applications ADD COLUMN IF NOT EXISTS ai_score DOUBLE PRECISION;
+                    ALTER TABLE applications ADD COLUMN IF NOT EXISTS assigned_limit DOUBLE PRECISION;
+                    ALTER TABLE applications ADD COLUMN IF NOT EXISTS decision_reason VARCHAR(250);
+                    ALTER TABLE applications ADD COLUMN IF NOT EXISTS mode VARCHAR(30) DEFAULT 'ONLINE';
+                    CREATE INDEX IF NOT EXISTS ix_applications_idempotency ON applications (idempotency_key);
+                """))
     except Exception as exc:
         logger.warning("Không thể tạo schema database lúc khởi động: %s", exc)
 
@@ -45,7 +55,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth, customers, recommendations, products, applications, ai):
+for r in (auth, customers, recommendations, products, applications, ai, ops):
     app.include_router(r.router, prefix="/api")
 
 

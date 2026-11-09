@@ -2,7 +2,7 @@
 // nên khi backend FastAPI sẵn sàng chỉ cần đặt VITE_USE_MOCK=false.
 import * as mock from '../mock/data'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 const BASE = import.meta.env.VITE_API_BASE || '/api'
 
 const delay = (ms = 350) => new Promise((r) => setTimeout(r, ms))
@@ -98,11 +98,57 @@ export const api = {
     return { application_id: `APP-${Date.now().toString().slice(-6)}`, status: 'PENDING' }
   },
 
+  // GET /api/applications -> list of customer's submitted applications
+  async getMyApplications() {
+    if (!USE_MOCK) return http('/applications')
+    await delay(200)
+    return []
+  },
+
   // GET /api/ai/metrics -> nội dung training_metrics.json
   async getModelMetrics() {
     if (!USE_MOCK) return http('/ai/metrics')
     await delay(200)
     return mock.modelMetrics
+  },
+
+  // DevOps & Cloud Infrastructure Management
+  async getClusterOps() {
+    if (!USE_MOCK) return http('/ops/cluster')
+    await delay(300)
+    return {
+      status: 'HEALTHY',
+      database: { status: 'ONLINE', latency_ms: 1.8, pvc: 'postgres-pvc (5Gi)', network_policy: 'Active' },
+      outbox: { pending_count: 0, pending_items: [], worker_status: 'RUNNING (every 2s)' },
+      hpa: { backend: { min: 2, max: 8, current: 2, target_cpu: 70, current_cpu: 8 } },
+      security: { https: true, protocol: 'TLSv1.3', rate_limiting: '25 RPS', network_policy_active: true },
+      pods: [],
+      events: [],
+    }
+  },
+
+  async syncOutbox() {
+    if (!USE_MOCK) return http('/ops/sync-outbox', { method: 'POST' })
+    await delay(500)
+    return { status: 'SUCCESS', message: 'Đã đối soát 0 hồ sơ.', synced: [], errors: [] }
+  },
+
+  async triggerBackup() {
+    if (!USE_MOCK) return http('/ops/trigger-backup', { method: 'POST' })
+    await delay(500)
+    return { status: 'SUCCESS', message: 'Đã kích hoạt Job sao lưu database.' }
+  },
+
+  async toggleChaosDb() {
+    if (!USE_MOCK) return http('/ops/toggle-chaos-db', { method: 'POST' })
+    await delay(300)
+    return { status: 'SUCCESS', message: 'Đã chuyển trạng thái giả lập sự cố DB.' }
+  },
+
+  async triggerStressTest() {
+    if (!USE_MOCK) return http('/ops/stress-test', { method: 'POST' })
+    await delay(300)
+    return { status: 'SUCCESS', message: 'Đã hoàn tất đo tải CPU cho HPA.' }
   },
 }
 

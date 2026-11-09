@@ -7,6 +7,7 @@ import Products from './pages/Products'
 import ProductDetail from './pages/ProductDetail'
 import Transactions from './pages/Transactions'
 import AIInsights from './pages/AIInsights'
+import Infrastructure from './pages/Infrastructure'
 
 function RequireAuth({ children }) {
   const { customerId } = useAuth()
@@ -29,6 +30,8 @@ export default function App() {
         <Route path="products/:code" element={<ProductDetail />} />
         <Route path="transactions" element={<Transactions />} />
         <Route path="ai-insights" element={<AIInsights />} />
+        <Route path="infrastructure" element={<Infrastructure />} />
+        <Route path="admin/infrastructure" element={<Infrastructure />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

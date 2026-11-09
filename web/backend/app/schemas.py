@@ -106,6 +106,7 @@ class ApplicationIn(BaseModel):
     amount: float | None = Field(default=None, ge=0)
     term_months: int | None = Field(default=None, ge=1, le=120)
     monthly_income: float | None = Field(default=None, ge=0)
+    idempotency_key: str | None = Field(default=None, max_length=64)
 
 
 class ApplicationOut(BaseModel):
@@ -113,3 +114,8 @@ class ApplicationOut(BaseModel):
     status: str
     product_code: str
     created_at: datetime
+    ai_score: float | None = None
+    decision_reason: str | None = None
+    assigned_limit: float | None = None
+    is_duplicate: bool = False
+    mode: str = "ONLINE"

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Sparkles } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Sparkles, AlertTriangle } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../utils/useAsync'
+import { formatVND } from '../utils/format'
 import ProductIcon from '../components/ProductIcon'
 import ScoreRing from '../components/ScoreRing'
 import { ErrorBox, Skeleton } from '../components/States'
@@ -44,7 +45,8 @@ export default function ProductDetail() {
     setError('')
     try {
       const form = Object.fromEntries(new FormData(e.currentTarget))
-      const res = await api.submitApplication({ customer_number: customerId, product_code: code, ...form })
+      const idempotency_key = `IDEM-${customerId}-${code}-${Date.now()}`
+      const res = await api.submitApplication({ customer_number: customerId, product_code: code, idempotency_key, ...form })
       setResult(res)
     } catch (err) {
       setError(err.message)
@@ -105,10 +107,17 @@ export default function ProductDetail() {
           {result ? (
             <div className="success">
               <CheckCircle2 size={48} />
-              <h2>Đăng ký thành công!</h2>
-              <p className="muted">
-                Mã hồ sơ <b>{result.application_id}</b> đang được xử lý. VIB sẽ liên hệ bạn trong vòng 24 giờ.
-              </p>
+              <h2>{result.is_duplicate ? 'Đã ghi nhận yêu cầu trước đó' : 'Đăng ký thành công!'}</h2>
+              <div style={{ margin: '14px 0', padding: '12px 16px', background: 'var(--bg-subtle, #f8fafc)', borderRadius: '8px', textAlign: 'left', fontSize: '14px', lineHeight: '1.6' }}>
+                <p><strong>Mã hồ sơ:</strong> <span className="accent" style={{ fontWeight: 'bold' }}>{result.application_id}</span></p>
+                <p><strong>Trạng thái:</strong> <span className="badge" style={{ marginLeft: '4px' }}>{result.status}</span></p>
+                {result.assigned_limit ? (
+                  <p><strong>Hạn mức phê duyệt:</strong> <span style={{ color: '#16a34a', fontWeight: 'bold' }}>{formatVND(result.assigned_limit)}</span></p>
+                ) : null}
+                {result.decision_reason ? (
+                  <p className="muted" style={{ marginTop: '8px', fontSize: '13px' }}>{result.decision_reason}</p>
+                ) : null}
+              </div>
               <Link to="/" className="btn btn-primary">
                 Về trang tổng quan
               </Link>

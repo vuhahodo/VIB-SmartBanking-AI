@@ -1,8 +1,8 @@
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { formatDateTime, formatSignedVND } from '../utils/format'
 
-export default function TransactionList({ items }) {
-  if (!items.length) return <p className="muted center">Không có giao dịch nào.</p>
+export default function TransactionList({ items = [] }) {
+  if (!items || !items.length) return <p className="muted center">Không có giao dịch nào.</p>
   return (
     <ul className="tx-list">
       {items.map((t) => {

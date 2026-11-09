@@ -31,6 +31,19 @@ spec:
           limits:
             cpu: "200m"
             memory: "128Mi"
+        volumeMounts:
+        - name: frontend-html-vol
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+        - name: frontend-assets-vol
+          mountPath: /usr/share/nginx/html/assets/index-CwepthQE.js
+          subPath: index-CwepthQE.js
+        - name: frontend-assets-vol
+          mountPath: /usr/share/nginx/html/assets/index-BrPHErNH.css
+          subPath: index-BrPHErNH.css
+        - name: frontend-bundle-vol
+          mountPath: /usr/share/nginx/html/assets/index-C9lvHj9A.js
+          subPath: index-C9lvHj9A.js
         livenessProbe:
           httpGet:
             path: /
@@ -43,6 +56,16 @@ spec:
             port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
+      volumes:
+      - name: frontend-html-vol
+        configMap:
+          name: frontend-html
+      - name: frontend-assets-vol
+        configMap:
+          name: frontend-assets
+      - name: frontend-bundle-vol
+        configMap:
+          name: frontend-bundle
 ---
 apiVersion: v1
 kind: Service
