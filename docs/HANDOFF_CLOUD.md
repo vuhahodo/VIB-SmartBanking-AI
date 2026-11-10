@@ -1,125 +1,67 @@
-# ☁️ Báo Cáo Bàn Giao Hạ Tầng Điện Toán Đám Mây: VIB-SmartBanking-AI
+# Bàn giao phần Điện toán đám mây (đã kiểm chứng ngày 10/11/2026)
 
-> **Phiên bản hoàn thiện**: Tháng 11/2026  
-> **Môi trường vận hành**: Cụm Kubernetes K3s trên máy chủ Linux, triển khai đầy đủ Nginx Ingress, Metrics Server, HPA, NetworkPolicy, Backup CronJob, SRE Management Dashboard và kiến trúc phục hồi sau thảm họa (Disaster Recovery).
+Tài liệu này ghi những gì **đã chạy và đo thật** trên cụm, những lỗi đã sửa, và những gì còn thiếu. Mọi con số dưới đây đến từ lần chạy thật, không phải ước lượng.
 
----
+## 1. Môi trường kiểm chứng
+- Cụm: **K3s v1.37.2+k3s1** trong WSL2 Ubuntu 26.04 (1 node `desktop-pm1qg34`, containerd), Nginx Ingress (bare-metal, Service kiểu LoadBalancer qua ServiceLB của K3s), metrics-server và local-path có sẵn của K3s. Cài bằng `scripts/k3s_wsl_setup.sh`.
+- Trước đó nhóm cũng đã đo trên Kubernetes của Docker Desktop; kết quả tương tự (HPA 2→8 sau ~55 giây, tự phục hồi 19,2–19,6 giây).
+- Đăng nhập demo: `00992830` / `123456` (`DEMO_MODE=false` nên màn hình đăng nhập không liệt kê tài khoản).
+- Image: `vib-backend:v4`, `vib-frontend:v2` (build trên Docker Desktop, nạp vào K3s bằng `docker save | k3s ctr images import -`; image không nằm trong git).
+- Chạy các script kiểm tra/đo **trong WSL** (`python3 scripts/...`, địa chỉ `http://127.0.0.1`).
 
-## 📑 1. Tổng Kết Tiến Độ & Trạng Thái Triển Khai
+## 2. Kết quả kiểm thử đã chạy
+| Bộ kiểm thử | Kết quả |
+|---|---|
+| `python scripts/test_master.py --url http://127.0.0.1` | 22/22 đạt |
+| `python scripts/test_security.py --url http://127.0.0.1` | 4/4 đạt (HTTPS, rate limit, NetworkPolicy, IDOR) |
+| `python scripts/test_registration.py --url http://127.0.0.1` | 5/5 đạt (AI chạy online, idempotency, AI lỗi, DB sập) |
+| `python scripts/verify_cloud.py --url http://127.0.0.1 --run-backup` | 19/19 đạt (xem lưu ý NetworkPolicy ở mục 4) |
 
-Toàn bộ các yêu cầu của bài toán môn **Điện toán đám mây** và các bài toán thực tế nâng cao đã được nghiên cứu, phát triển và nghiệm thu đạt **100% tiêu chí**:
+## 3. Số đo thật (K3s, qua Ingress, 1 node, ngày 10/11/2026)
+| Chỉ số | Giá trị |
+|---|---|
+| Tải nhẹ (5 req/s) | p50 28 ms, p95 75 ms, 100% thành công |
+| Tải 20 req/s trong 60 giây | 1.218 request, 100% thành công, p50 373 ms, p95 574 ms, p99 731 ms |
+| HPA backend (mục tiêu 70% CPU) | 2 → 4 pod sau ~40 giây, 8 pod sau ~65 giây; CPU 151–294% rồi giảm về 86% |
+| Tự phục hồi khi xoá 1 pod backend (2 lần đo) | pod mới Ready sau 19,65 s và 19,0 s; 0 request lỗi (49/49 và 48/48) |
 
-| Hạng mục / Yêu cầu | Trạng thái | Minh chứng & Kiểm định |
-|---|:---:|---|
-| **1. Container Orchestration & Cô lập Namespace** | **HOÀN TẤT** | Namespace `vib-banking`, Secrets mã hóa base64 |
-| **2. Tầng Lưu Trữ Dữ Liệu Bền Vững** | **HOÀN TẤT** | PostgreSQL StatefulSet `postgres-0`, PVC `postgres-pvc` 5Gi, bảo toàn dữ liệu 290.000 hồ sơ qua các lần restart |
-| **3. Cổng Vào Duy Nhất & Cân Bằng Tải (Ingress Gateway)** | **HOÀN TẤT** | Nginx Ingress Controller tại IP `172.17.242.190`, định tuyến đường dẫn `/*` và `/api/*`, Round-Robin Load Balancing |
-| **4. Tự Động Co Giãn Đàn Hồi (HPA)** | **HOÀN TẤT** | Metrics Server hoạt động, HPA co giãn từ **2 đến 8 Pods** theo ngưỡng **70% CPU** |
-| **5. Cơ Chế Tự Phục Hồi & Kiểm Tra Sức Khỏe (Probes)** | **HOÀN TẤT** | Liveness Probe (`/health`), Readiness Probe (`/ready`) xác nhận nạp đủ 3 mô hình XGBoost trước khi nhận traffic |
-| **6. Cập Nhật Không Gián Đoạn (Zero-Downtime Rollout)** | **HOÀN TẤT** | RollingUpdate với `maxUnavailable: 0`, kết hợp PodDisruptionBudget (PDB) giữ tối thiểu 1 Pod mỗi tầng |
-| **7. Sao Lưu & Phục Hồi Dữ Liệu Tự Động** | **HOÀN TẤT** | CronJob `pg-backup` chạy 02:00 hàng ngày, nén `.sql.gz` lưu vào PVC 7 ngày, hỗ trợ kích hoạt sao lưu tức thì On-Demand |
-| **8. Cô Lập Mạng Cơ Sở Dữ Liệu (NetworkPolicy)** | **HOÀN TẤT** | NetworkPolicy chặn 100% các Pod lạ xâm nhập cổng DB 5432, chỉ cho phép `backend-api` và `pg-backup` |
-| **9. Mã Hóa Toàn Trình & Điều Tiết Lưu Lượng** | **HOÀN TẤT** | HTTPS TLSv1.3 với `vib-tls-secret`, HSTS active; Rate Limiting 25 RPS (Burst 50) chặn DDoS |
-| **10. Đăng Ký Từ Xa Chịu Lỗi Thảm Họa (Outbox Pattern)** | **HOÀN TẤT** | Idempotency (`X-Idempotency-Key`), Rule-based Fallback khi AI timeout, Outbox Buffer `/tmp/vib_outbox` khi DB sập, tự động đối soát không mất dữ liệu |
-| **11. Bảng Quản Trị SRE / DevOps Dashboard** | **HOÀN TẤT** | Route `/admin/infrastructure` giám sát K8s pods, DB latency, HPA, cluster events, thao tác kích hoạt thảm họa và đối soát trực quan |
-| **12. Master Automated Test Suite** | **HOÀN TẤT** | `python3 scripts/test_master.py --url http://172.17.242.190` đạt **22/22 PASS (100%)** |
+Lệnh đo (trong WSL): `python3 scripts/load_test.py --url http://127.0.0.1 --duration 60 --concurrency 20 --rate 20` và `python3 scripts/self_healing_demo.py`. Chờ HPA về 2 pod (khoảng 5 phút) giữa các lần đo.
 
----
+**Lưu ý khi đo:**
+1. Ingress giới hạn 25 request/giây mỗi IP. Không có `--rate`, một luồng trên WSL (độ trễ ~0,4 ms) cũng bắn hàng trăm req/s và ~93–97% request bị 503. Luôn dùng `--rate` dưới 25.
+2. Trên Windows dùng `127.0.0.1`, không dùng `localhost` (thêm ~2 giây trễ kết nối).
 
-## 🏛️ 2. Thông Số Hạ Tầng Thực Tế Trên Cụm
+## 4. Lỗi đã sửa trong lần kiểm chứng này
+- `applications.py`: biến `SIMULATED_CHAOS_MODE` được dùng nhưng chưa khai báo (`NameError`), nên mọi đơn đăng ký rơi vào dự phòng theo luật và **AI chưa từng được dùng**. Đã khai báo; giờ đơn có `Mode: ONLINE` và điểm AI thật.
+- `ops.py`: các endpoint `/api/ops/*` (bật sập DB, tạo tải, sao lưu, đối soát) trước đây không cần đăng nhập. Nay yêu cầu JWT. `test_master.py` đã cập nhật gửi token.
+- `vib-tls-secret` không có trong repo nên HTTPS dùng chứng chỉ giả mặc định của Nginx. Thêm `scripts/gen_tls_secret.sh` tạo Secret chứng chỉ tự ký cho `smartbanking.vib.vn`.
+- `self_healing_demo.py` luôn in "0% lỗi" bất kể kết quả; nay in theo số đo thật.
+- `demo_launcher.ps1` dùng `localhost` và 30 luồng không giới hạn; nay dùng `127.0.0.1`, 20 luồng, `--rate 20`.
+- **NetworkPolicy:** sau khi Docker Desktop khởi động lại, bộ điều khiển NetworkPolicy của kindnet có thể lỗi (log: `could not open nfqueue socket`) và chính sách không có hiệu lực. Khắc phục: `kubectl delete pod -n kube-system -l app=kindnet`, rồi chạy lại `verify_cloud.py`.
 
-### 2.1. Cụm Workloads (`kubectl get pods -n vib-banking`)
-- **Node**: `laptop-64a1qvue` (WSL2 Ubuntu K3s)
-- **Địa chỉ Node IP**: `172.17.242.190`
-- **Workloads đang chạy ổn định**:
-  - `postgres-0`: 1/1 Running, Persistent Volume Claim 5Gi.
-  - `backend-api-...` (2 Pods): 1/1 Running, FastAPI + 3 mô hình XGBoost (RAM ~280MB/pod).
-  - `frontend-ui-...` (2 Pods): 1/1 Running, ReactJS Nginx production build.
+## 5. Chưa có / hạn chế (đã nói rõ trên slide)
+- Chưa ép chuyển HTTP sang HTTPS; chứng chỉ tự ký; Secret trong repo là giá trị mẫu (base64 không phải mã hoá).
+- Chưa phân vai admin: khách đăng nhập nào cũng gọi được `/api/ops`. RBAC (`k8s/10-rbac.yaml`) gắn cho ServiceAccount mặc định.
+- Tham số `simulate_failure` và công tắc chaos còn trong API production.
+- Outbox nằm trong `/tmp` của pod: mất nếu pod chết trước khi đối soát. "Không mất dữ liệu" chỉ đúng khi pod còn sống; production cần hàng đợi bền.
+- 1 node, PostgreSQL 1 bản sao, sao lưu cùng cụm, chưa có giám sát, CI/CD.
+- Không còn khẳng định nào trong tài liệu cũ về "100% tiêu chí", HSTS, hay RTO 44 giây: các số đó không khớp với lần đo thật.
 
-### 2.2. Số Đo Thực Nghiệm Đạt Chuẩn (Metrics Benchmark)
-- **Độ trễ phản hồi Backend trung bình**: ~1.8ms - 3.2ms.
-- **Thời gian suy luận AI 3 mô hình song song**: ~3.5ms / request.
-- **Thời gian tự phục hồi khi xóa Pod Backend (RTO)**: **~44.3 giây** (Pod mới khởi tạo, unpickle model AI, vượt qua readinessProbe và gia nhập Endpoint pool).
-- **Số lượng request gián đoạn khi Pod Backend bị xóa**: **0 requests lỗi** (Nginx Ingress tự động điều hướng sang Pod còn lại nhờ `maxUnavailable: 0` và PDB).
-- **Hành vi HPA khi Stress Test (60 parallel AI inferences)**: CPU nhảy vọt từ ~8% lên 24% - 85%, kích hoạt scale-up tự động.
-
----
-
-## 🛡️ 3. Kiến Trúc Đăng Ký Từ Xa Chịu Lỗi (Remote Registration Resilience)
-
-Hệ thống giải quyết triệt để 3 kịch bản sự cố thực tế trong ngân hàng:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Customer as Khách Hàng (Web UI)
-    participant Ingress as Nginx Ingress
-    participant API as Backend Pod (FastAPI)
-    participant AI as AI Engine (XGBoost)
-    participant Outbox as Local Outbox (/tmp)
-    participant DB as PostgreSQL (PVC 5Gi)
-
-    alt Kịch bản 1: Luồng chuẩn (Happy Path)
-        Customer->>API: POST /api/applications (X-Idempotency-Key)
-        API->>AI: Chạy 3 mô hình chấm điểm tín dụng
-        AI-->>API: Điểm rủi ro & Hạn mức đề xuất
-        API->>DB: Lưu đơn đăng ký (PRE_APPROVED)
-        API-->>Customer: HTTP 201 Created (Kèm hạn mức thẻ)
-    else Kịch bản 2: Bấm đúp / Mạng chập chờn (Duplicate Request)
-        Customer->>API: POST /api/applications (Trùng X-Idempotency-Key)
-        API->>DB: Tra cứu key idempotency
-        DB-->>API: Trả về đơn đã tạo
-        API-->>Customer: HTTP 200 OK (is_duplicate: true - Không chạy lại AI)
-    else Kịch bản 3: AI Timeout / Quá tải (> 1.5s)
-        Customer->>API: POST /api/applications
-        API->>AI: Gọi AI thẩm định (Bị timeout/lỗi)
-        API->>API: Kích hoạt Circuit Breaker Rule Fallback
-        API->>DB: Lưu đơn với trạng thái PENDING_REVIEW
-        API-->>Customer: HTTP 201 Created (Chuyển kênh thẩm định - Không lỗi 500)
-    else Kịch bản 4: Database Sập Vật Lý (Zero Data Loss)
-        Customer->>API: POST /api/applications
-        API->>DB: Kết nối DB thất bại (Mất kết nối)
-        API->>Outbox: Lưu file JSON đơn vào bộ đệm /tmp/vib_outbox
-        API-->>Customer: HTTP 202 Accepted (status: QUEUED_OFFLINE)
-        Note over API,DB: Background Daemon kiểm tra DB mỗi 2s
-        DB-->>API: DB online trở lại
-        API->>DB: Tự động nạp bù toàn bộ đơn từ Outbox vào DB
-    end
-```
-
----
-
-## 🖥️ 4. Bảng Điều Khiển SRE / DevOps (`/admin/infrastructure`)
-
-Dành riêng cho nhóm kỹ sư vận hành hệ thống đám mây:
-- **URL**: `http://172.17.242.190/admin/infrastructure`
-- **Tài khoản**: Đăng nhập qua tài khoản demo `00992830` / `123456`, sau đó bấm menu **Hạ tầng Cloud** ở thanh bên trái.
-- **Tính năng nổi bật**:
-  1. *Dashboard Vitals*: Đo nhịp tim DB, số đơn trong Outbox, HPA CPU % và mức độ bảo mật Ingress.
-  2. *Workloads K8s*: Danh sách Pods trực tiếp từ K8s API, theo dõi restarts và thời gian sống.
-  3. *Cluster Events*: Bắt sự kiện tạo Pod, hoàn thành sao lưu, scale pods.
-  4. *Chaos Action Panel*: Nút "Mô phỏng sập Database" (dùng chung cho mọi Pods qua table `system_chaos`), nút "Nộp đơn khi sự cố", nút "Bơm tải đột biến CPU", nút "Sao lưu Database On-demand" và nút "Ép buộc đối soát Outbox".
-  5. *Live Console*: Xem log phản hồi JSON, status code và latency ngay trên màn hình.
-
----
-
-## 🚀 5. Hướng Dẫn Kiểm Định Dành Cho Giảng Viên & Nhóm Phát Triển
-
-### 5.1. Chạy Bộ Kiểm Tra Toàn Diện (Master Test Suite)
+## 6. Cài và chạy lại từ đầu (K3s trong WSL)
+Trong WSL (có thể mở bằng `wsl -d Ubuntu -u root` để khỏi cần mật khẩu sudo), tại thư mục gốc dự án:
 ```bash
-python3 scripts/test_master.py --url http://172.17.242.190
+bash scripts/k3s_wsl_setup.sh     # cài K3s + Nginx Ingress, nạp image, TLS, deploy, verify_cloud
+python3 scripts/test_master.py --url http://127.0.0.1
+python3 scripts/test_security.py --url http://127.0.0.1
 ```
-Kết quả mong đợi: **22/22 Tests PASSED (100%)**.
+Cần Docker Desktop đang chạy để lấy hai image (build trước bằng `scripts/build_images.*`; backend cần tag `v4`).
 
-### 5.2. Chạy Kiểm Tra An Ninh & Bảo Mật (Security Audit)
-```bash
-python3 scripts/test_security.py --url http://172.17.242.190
-```
-Bao gồm kiểm tra HTTPS/HSTS, Rate Limiting burst, NetworkPolicy DB isolation và IDOR protection.
+**Các lỗi đã gặp khi cài trên WSL:**
+- `curl` thất bại im lặng vì WSL không có đường IPv6: script tự ép IPv4 (`~/.curlrc`).
+- Lệnh `docker` trong WSL có thể chỉ là bản giả của Docker Desktop: script dùng `docker.exe`.
+- Script `.sh` phải ở dạng LF; `.gitattributes` đã ép `eol=lf`.
+- Docker Desktop đang giữ cổng 80/443 của Windows: muốn vào `http://127.0.0.1` từ Windows thì tắt "Enable Kubernetes" trong Docker Desktop. Truy cập từ trong WSL không bị ảnh hưởng.
+- `kubectl` trên Windows muốn trỏ vào K3s: `$env:KUBECONFIG="$HOME\.kube\config-k3s"` (file do `k3s_wsl_setup.sh` tạo).
 
-### 5.3. Thao Tác Trực Tiếp Trên Web
-1. Mở trình duyệt truy cập `http://172.17.242.190/`
-2. Đăng nhập: Mã KH `00992830`, Mật khẩu `123456`.
-3. Bấm vào **Sản phẩm** -> Chọn **Thẻ tín dụng VIB Super Card** -> Nhập thông tin và bấm **Gửi hồ sơ đăng ký**.
-4. Quay lại **Tổng quan** -> Xem mục **Hồ sơ đăng ký từ xa của bạn** để thấy đơn đã được phê duyệt.
-5. Bấm vào menu **Hạ tầng Cloud** (`/admin/infrastructure`) để trải nghiệm bảng điều khiển SRE, thử nghiệm các nút Chaos Test và quan sát số liệu biến động tức thì.
+## 7. Tài liệu thuyết trình
+`docs/presentation/VIB_SmartBanking_Nhom6_Slides_5phut.pptx` (8 slide, Hà trình bày, Trung demo) và `..._KichBan_ThuyetTrinh_5phut.docx` (script đọc, kịch bản demo, hỏi đáp). Bản 12 slide cũ trong cùng thư mục là bản trước khi có số đo thật: không dùng.
