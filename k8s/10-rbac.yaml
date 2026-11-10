@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vib-ops-role
+  namespace: vib-banking
+rules:
+- apiGroups: [""]
+  resources: ["pods", "events", "services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "create", "delete"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vib-ops-rolebinding
+  namespace: vib-banking
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: vib-banking
+roleRef:
+  kind: Role
+  name: vib-ops-role
+  apiGroup: rbac.authorization.k8s.io
+

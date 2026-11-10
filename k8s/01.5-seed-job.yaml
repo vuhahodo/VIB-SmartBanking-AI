@@ -18,7 +18,7 @@ spec:
         command: ['sh', '-c', 'until nc -z -w 2 postgres-svc 5432; do echo "Waiting for PostgreSQL..."; sleep 2; done; echo "PostgreSQL is reachable!";']
       containers:
       - name: seed
-        image: vib-backend:v1
+        image: vib-backend:v4
         imagePullPolicy: IfNotPresent
         command: ["python", "seed.py"]
         envFrom:

@@ -25,7 +25,7 @@ spec:
         command: ['sh', '-c', 'until nc -z -w 2 postgres-svc 5432; do echo "Waiting for PostgreSQL..."; sleep 2; done; echo "PostgreSQL is ready!";']
       containers:
       - name: backend
-        image: vib-backend:v1
+        image: vib-backend:v4
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
@@ -50,40 +50,16 @@ spec:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 40
+          initialDelaySeconds: 15
           periodSeconds: 10
           failureThreshold: 5
         readinessProbe:
           httpGet:
             path: /ready
             port: 8000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 15
           periodSeconds: 5
           failureThreshold: 5
-        volumeMounts:
-        - mountPath: /app/app/schemas.py
-          name: backend-override-vol
-          subPath: schemas.py
-        - mountPath: /app/app/routers/recommendations.py
-          name: backend-override-vol
-          subPath: recommendations.py
-        - mountPath: /app/app/routers/auth.py
-          name: backend-override-vol
-          subPath: auth.py
-        - mountPath: /app/app/routers/applications.py
-          name: backend-override-vol
-          subPath: applications.py
-        - mountPath: /app/app/routers/ops.py
-          name: backend-override-vol
-          subPath: ops.py
-        - mountPath: /app/app/main.py
-          name: backend-override-vol
-          subPath: main.py
-      volumes:
-      - configMap:
-          defaultMode: 420
-          name: backend-override
-        name: backend-override-vol
 ---
 apiVersion: v1
 kind: Service
