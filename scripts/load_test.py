@@ -33,11 +33,13 @@ class LoadTester:
         duration: int = 60,
         endpoint: str | None = None,
         timeout: float = 10.0,
+        rate: float = 0.0,
     ):
         self.base_url = base_url.rstrip("/")
         self.customer_id = customer_id
         self.password = password
         self.concurrency = concurrency
+        self.rate = rate  # tong so request/giay muon duy tri (0 = khong gioi han)
         self.duration = duration
         self.timeout = timeout
         self.endpoint = endpoint or f"/api/recommendations/{self.customer_id}"
@@ -111,6 +113,13 @@ class LoadTester:
             with self.lock:
                 self.latencies.append(latency_ms)
                 self.status_codes[code] = self.status_codes.get(code, 0) + 1
+
+            if self.rate > 0:
+                # Gian cach de giu tong toc do ~ rate req/s (tranh vuot rate limit cua Ingress)
+                period = self.concurrency / self.rate
+                remain = period - (time.perf_counter() - start_time)
+                if remain > 0:
+                    self.stop_event.wait(remain)
 
     def run(self):
         print("\n" + "=" * 65)
@@ -268,6 +277,7 @@ def main():
     parser.add_argument("--concurrency", "-n", type=int, default=30, help="So luong thread dong thoi (mac dinh: 30)")
     parser.add_argument("--duration", "-d", type=int, default=60, help="Thoi gian tao tai tinh bang giay (mac dinh: 60)")
     parser.add_argument("--endpoint", "-e", default="", help="Endpoint tuy chon de test tai (mac dinh: /api/recommendations/<customer_id>)")
+    parser.add_argument("--rate", "-r", type=float, default=0.0, help="Gioi han tong RPS (vi du 20 de khong vuot rate limit 25 req/s cua Ingress; mac dinh 0 = khong gioi han)")
     parser.add_argument("--timeout", "-t", type=float, default=10.0, help="Timeout moi request (mac dinh: 10.0)")
 
     args = parser.parse_args()
@@ -279,6 +289,7 @@ def main():
         duration=args.duration,
         endpoint=args.endpoint or None,
         timeout=args.timeout,
+        rate=args.rate,
     )
     tester.run()
 

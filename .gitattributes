@@ -1,0 +1,4 @@
+# Script và manifest luôn dùng LF để chạy được trong WSL/Linux
+*.sh text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf

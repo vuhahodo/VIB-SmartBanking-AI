@@ -350,7 +350,7 @@ def main():
 
     # 5.1 Giám sát thời gian thực
     total_tests += 1
-    code, js, _, _, ms = http_request(f"{base_http}/api/ops/cluster")
+    code, js, _, _, ms = http_request(f"{base_http}/api/ops/cluster", headers=auth_headers)
     if code == 200 and js and "pods" in js and "database" in js:
         passed_tests += 1
         db_st = js["database"]["status"]
@@ -364,7 +364,7 @@ def main():
 
     # 5.2 Ép buộc đối soát Outbox
     total_tests += 1
-    code, js, _, _, ms = http_request(f"{base_http}/api/ops/sync-outbox", method="POST")
+    code, js, _, _, ms = http_request(f"{base_http}/api/ops/sync-outbox", method="POST", headers=auth_headers)
     if code == 200 and js and js.get("status") == "SUCCESS":
         passed_tests += 1
         print_pass(f"5.2 Thao tác SRE: Ép buộc đối soát Outbox (/api/ops/sync-outbox) -> HTTP 200")
@@ -373,7 +373,7 @@ def main():
 
     # 5.3 Kích hoạt Sao lưu Database On-demand
     total_tests += 1
-    code, js, _, _, ms = http_request(f"{base_http}/api/ops/trigger-backup", method="POST")
+    code, js, _, _, ms = http_request(f"{base_http}/api/ops/trigger-backup", method="POST", headers=auth_headers)
     if code == 200 and js and js.get("status") == "SUCCESS":
         passed_tests += 1
         print_pass(f"5.3 Thao tác SRE: Tạo K8s Job sao lưu dữ liệu khẩn cấp -> HTTP 200 ({js.get('job_name')})")
