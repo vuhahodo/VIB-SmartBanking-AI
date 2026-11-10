@@ -7,13 +7,15 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import text
 
+from ..auth import get_current_customer
 from ..database import engine
 from .applications import OUTBOX_DIR, flush_local_outbox, is_chaos_db_down, set_chaos_db_down
 
-router = APIRouter(prefix="/ops", tags=["ops"])
+# Mọi endpoint quản trị đều yêu cầu đăng nhập (JWT). Chưa phân vai admin riêng: hướng phát triển.
+router = APIRouter(prefix="/ops", tags=["ops"], dependencies=[Depends(get_current_customer)])
 logger = logging.getLogger("vib.ops")
 
 

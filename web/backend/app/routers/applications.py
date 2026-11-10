@@ -21,6 +21,9 @@ logger = logging.getLogger("vib.applications")
 OUTBOX_DIR = Path("/tmp/vib_outbox")
 OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
 
+# Cờ mô phỏng sự cố AI dùng chung (False = AI hoạt động bình thường)
+SIMULATED_CHAOS_MODE = {"ai_down": False}
+
 
 def is_chaos_db_down() -> bool:
     """Kiểm tra cờ sự cố database dùng chung trên toàn bộ các pod của cụm K8s."""
